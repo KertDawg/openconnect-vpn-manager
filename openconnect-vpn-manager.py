@@ -11,6 +11,10 @@ from curses import wrapper
 OCSERV = "../ocserv/ssl"
 OCPROFILES = os.path.join(OCSERV, "profiles")
 
+
+Profiles = []
+
+
 #  Create window object
 MainScreen = curses.initscr()
 
@@ -29,6 +33,7 @@ if curses.has_colors():
 
 #  Set keypad mode
 MainScreen.keypad(True)
+
 
 def Main(MainScreen):
     #  Clear the screen
@@ -50,7 +55,6 @@ def Main(MainScreen):
     MainWindow = curses.newwin(curses.LINES, curses.COLS, 0, 0)
     MainWindow.bkgd(" ", curses.color_pair(1))
     MainWindow.box()
-    MainWindow.addstr(1, 1, "OpenConnect VPN Manager", curses.A_BOLD)
 
     #  Check the data folders
     if (not ConfigureData(MainWindow)):
@@ -62,9 +66,14 @@ def Main(MainScreen):
         ErrorWindow.refresh()
         MainScreen.getkey()
         return
+    
+    #  Clear the screen
+    MainWindow.clear()
+    MainScreen.refresh()
+    MainWindow.refresh()
 
     #  Show the main menu and do the main loop
-    MainMenu(MainWindow, 7, curses.LINES - 6)
+    MainMenu(MainWindow, 3, curses.LINES - 6)
 
 
 def ConfigureData(Window):
@@ -107,7 +116,12 @@ def ConfigureData(Window):
     return True
 
 
+def DrawHeader(Window):
+    Window.addstr(1, 1, "OpenConnect VPN Manager", curses.A_BOLD)
+
+
 def ShowExistingProfiles(Window, Line):
+    global Profiles
     Profiles = []
 
     #  Get the base names of all p12 files
@@ -126,22 +140,23 @@ def ShowExistingProfiles(Window, Line):
     Window.addstr(Line, 1, "Profiles:", curses.A_BOLD)
     CurrentIndex = 0    
     for p in Profiles:
-        Window.addstr(Line + CurrentIndex + 1, 2, "- " + p)
+        Window.addstr(Line + CurrentIndex + 1, 2, str(CurrentIndex + 1) + ": " + p)
         CurrentIndex += 1
 
     return True
 
 
 def MainMenu(Window, ListLine, MenuLine):
-    #  Show the existing clients
-    ShowExistingProfiles(Window, ListLine)
-
-    Window.addstr(MenuLine, 1, "What to do?", curses.A_BLINK)
+    DrawHeader(Window)
     SelectedOption = 1
-    ShouldWeExit = False
 
-    while not ShouldWeExit:
+    while True:
+        #  Show the existing clients
+        ShowExistingProfiles(Window, ListLine)
+
+        #  Draw the menu
         DrawMenu(Window, MenuLine + 1, SelectedOption)
+
         MainScreen.refresh()
         Window.refresh()
         Key = MainScreen.getch()
@@ -160,18 +175,68 @@ def MainMenu(Window, ListLine, MenuLine):
             if SelectedOption == 3:
                 return
             else:
-                ExecuteOption(SelectedOption)
+                ExecuteOption(Window, MenuLine - 4, SelectedOption)
+
+                #  Reset the window
+                Window.clear()
+                DrawHeader(Window)
+                Window.addstr(MenuLine, 1, "What to do?", curses.A_BLINK)
 
 
 def DrawMenu(Window, Line, SelectedOption):
     Window.addstr(Line, 1, "Add a profile", curses.A_REVERSE if (SelectedOption == 1) else 0)
-    Window.addstr(Line + 1, 1, "Delete a profile", curses.A_REVERSE if (SelectedOption == 2) else 0)
+    Window.addstr(Line + 1, 1, "Remove a profile", curses.A_REVERSE if (SelectedOption == 2) else 0)
     Window.addstr(Line + 2, 1, "Exit", curses.A_REVERSE if (SelectedOption == 3) else 0)
     return
 
-def ExecuteOption(OptionNumber):
+
+def ExecuteOption(Window, Line, OptionNumber):
+    if OptionNumber == 1:
+        AddProfile(Window, Line)
+    elif OptionNumber == 2:
+        RemoveProfile(Window, Line)
+
+
+def AddProfile(Window, Line):
     return
 
+
+def RemoveProfile(Window, Line):
+    global Profiles
+    SelectedProfile = 0
+    NumberOfProfiles = len(Profiles)
+
+    if NumberOfProfiles == 0:
+        return
+
+    Window.addstr(Line, 1, "Remove which profile?", curses.A_BOLD)
+    Window.refresh()
+
+    while SelectedProfile == 0:
+        Key = MainScreen.getch()
+
+        if (Key >= ord("1")) and (Key <= ord("9")):
+            SelectedProfile = Key - ord("0")
+
+            if SelectedProfile > NumberOfProfiles:
+                SelectedProfile = 0
+
+    SelectedName = Profiles[SelectedProfile - 1]
+    Window.addstr(Line, 1, "Delete profile: ")
+    Window.addstr(Line, 17, SelectedName + "              ", curses.A_BOLD)
+    Window.addstr(Line + 1, 1, "Are you sure? (y/n)", curses.color_pair(2) | curses.A_BLINK | curses.A_BOLD)
+    Window.refresh()
+    Key = 0
+
+    while True:
+        Key = MainScreen.getch()
+
+        if (Key == ord("n")) or (Key == ord("N")):
+            return
+        elif (Key == ord("y")) or (Key == ord("Y")):
+            #  Actually do the removal
+            return
+    
 
 #  Run the main program
 wrapper(Main)
