@@ -2,6 +2,7 @@
 
 import os
 import math
+from pathlib import Path
 import curses
 from curses import wrapper
 
@@ -42,6 +43,8 @@ def Main(MainScreen):
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLUE)
     #  Error dialog
     curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_RED)
+    #  Low-key
+    curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLUE)
 
     #  Make the main window
     MainWindow = curses.newwin(curses.LINES, curses.COLS, 0, 0)
@@ -60,11 +63,8 @@ def Main(MainScreen):
         MainScreen.getkey()
         return
 
-    #  Show the existing clients
-
-    MainWindow.refresh()
-    MainScreen.refresh()
-    MainScreen.getkey()
+    #  Show the main menu and do the main loop
+    MainMenu(MainWindow, 7, curses.LINES - 6)
 
 
 def ConfigureData(Window):
@@ -105,6 +105,72 @@ def ConfigureData(Window):
         return False
     
     return True
+
+
+def ShowExistingProfiles(Window, Line):
+    Profiles = []
+
+    #  Get the base names of all p12 files
+    for p in os.listdir(OCPROFILES):
+        if p.endswith(".p12"):
+            Profiles.append(Path(p).stem)
+
+    Profiles.sort()
+    NumberOfProfiles = len(Profiles)
+
+    #  There aren't any to show
+    if NumberOfProfiles == 0:
+        Window.addstr(Line, 1, "There are no existing profiles.", curses.color_pair(3))
+        return False
+
+    Window.addstr(Line, 1, "Profiles:", curses.A_BOLD)
+    CurrentIndex = 0    
+    for p in Profiles:
+        Window.addstr(Line + CurrentIndex + 1, 2, "- " + p)
+        CurrentIndex += 1
+
+    return True
+
+
+def MainMenu(Window, ListLine, MenuLine):
+    #  Show the existing clients
+    ShowExistingProfiles(Window, ListLine)
+
+    Window.addstr(MenuLine, 1, "What to do?", curses.A_BLINK)
+    SelectedOption = 1
+    ShouldWeExit = False
+
+    while not ShouldWeExit:
+        DrawMenu(Window, MenuLine + 1, SelectedOption)
+        MainScreen.refresh()
+        Window.refresh()
+        Key = MainScreen.getch()
+
+        if Key == curses.KEY_DOWN:
+            SelectedOption += 1
+
+            if SelectedOption > 3:
+                SelectedOption = 3
+        elif Key == curses.KEY_UP:
+            SelectedOption -= 1
+            
+            if SelectedOption < 1:
+                SelectedOption = 1
+        elif Key == curses.KEY_ENTER or Key == 10 or Key == 13:
+            if SelectedOption == 3:
+                return
+            else:
+                ExecuteOption(SelectedOption)
+
+
+def DrawMenu(Window, Line, SelectedOption):
+    Window.addstr(Line, 1, "Add a profile", curses.A_REVERSE if (SelectedOption == 1) else 0)
+    Window.addstr(Line + 1, 1, "Delete a profile", curses.A_REVERSE if (SelectedOption == 2) else 0)
+    Window.addstr(Line + 2, 1, "Exit", curses.A_REVERSE if (SelectedOption == 3) else 0)
+    return
+
+def ExecuteOption(OptionNumber):
+    return
 
 
 #  Run the main program
