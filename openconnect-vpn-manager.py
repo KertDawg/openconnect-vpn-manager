@@ -5,6 +5,7 @@ import subprocess
 import math
 from pathlib import Path
 import curses
+import curses.textpad
 from curses import wrapper
 
 
@@ -53,6 +54,8 @@ def Main(MainScreen):
     curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLUE)
     #  Message box
     curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_GREEN)
+    #  Input box
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_YELLOW)
 
     #  Make the main window
     MainWindow = curses.newwin(curses.LINES, curses.COLS, 0, 0)
@@ -196,7 +199,7 @@ def MainMenu(Window, ListLine, MenuLine):
             
             if SelectedOption < 1:
                 SelectedOption = 1
-        elif Key == curses.KEY_ENTER or Key == 10 or Key == 13:
+        elif (Key == curses.KEY_ENTER) or (Key == 10) or (Key == 13):
             if SelectedOption == 4:
                 return
             else:
@@ -227,7 +230,10 @@ def ExecuteOption(Window, Line, OptionNumber):
 
 def AddProfile(Window, Line):
     #  Get the profile name
-    ProfileName = "dumb"
+    ProfileName = GetNewProfileName(Window)
+
+    if ProfileName == "":
+        return
 
     with open(os.devnull, 'w') as Null:
         Process = subprocess.Popen(["certtool", "--generate-privkey", "--outfile", ProfileName + "-privkey.pem"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
@@ -239,6 +245,36 @@ def AddProfile(Window, Line):
         Process.communicate()
         if Process.returncode != 0:
             return
+
+        Process = subprocess.Popen(["certtool", "--to-p12", "--load-privkey", ProfileName + "-privkey.pem", "--p12-name=VPN-" + ProfileName, "--empty-password", "--load-certificate", ProfileName + "-cert.pem", "--pkcs-cipher", "3des-pkcs12", "--outfile", ProfileName + ".p12",  "--outder"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+        if Process.returncode != 0:
+            return
+
+
+def EnterIsTerminate(x):
+    if x == 10:
+        return 7
+    else:
+        return x
+
+
+def GetNewProfileName(Window):
+    TopLine = (math.floor(curses.LINES / 2) - 3)
+    LeftColumn = (math.floor(curses.COLS / 2) - 26)
+    InputWindow = curses.newwin(5, 52, TopLine, LeftColumn)
+    InputWindow.bkgd(" ", curses.color_pair(5))
+    InputWindow.box()
+    InputWindow.addstr(2, 2, "New profile name: ")
+    Window.refresh()
+    InputWindow.refresh()
+
+    BoxWindow = curses.newwin(1, 16, TopLine + 2, LeftColumn + 24)
+    BoxWindow.bkgd(" ", curses.color_pair(6))
+    InputBox = curses.textpad.Textbox(BoxWindow, insert_mode=True)
+    Name = InputBox.edit(EnterIsTerminate)
+
+    return Name.strip()
 
 
 def RemoveProfile(Window, Line):
