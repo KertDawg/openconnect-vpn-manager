@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import subprocess
 import math
 from pathlib import Path
 import curses
@@ -50,6 +51,8 @@ def Main(MainScreen):
     curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_RED)
     #  Low-key
     curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLUE)
+    #  Message box
+    curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_GREEN)
 
     #  Make the main window
     MainWindow = curses.newwin(curses.LINES, curses.COLS, 0, 0)
@@ -58,13 +61,7 @@ def Main(MainScreen):
 
     #  Check the data folders
     if (not ConfigureData(MainWindow)):
-        ErrorWindow = curses.newwin(5, 40, (math.floor(curses.LINES / 2) - 3), (math.floor(curses.COLS / 2) - 20))
-        ErrorWindow.bkgd(" ", curses.color_pair(3))
-        ErrorWindow.box()
-        ErrorWindow.addstr(2, 8, "Press any key to exit.")
-        MainWindow.refresh()
-        ErrorWindow.refresh()
-        MainScreen.getkey()
+        ErrorBox(MainWindow, "Press any key to exit.")
         return
     
     #  Clear the screen
@@ -74,6 +71,26 @@ def Main(MainScreen):
 
     #  Show the main menu and do the main loop
     MainMenu(MainWindow, 3, curses.LINES - 6)
+
+
+def ErrorBox(Window, Message):
+    ErrorWindow = curses.newwin(5, 52, (math.floor(curses.LINES / 2) - 3), (math.floor(curses.COLS / 2) - 26))
+    ErrorWindow.bkgd(" ", curses.color_pair(3))
+    ErrorWindow.box()
+    ErrorWindow.addstr(2, 2, Message)
+    Window.refresh()
+    ErrorWindow.refresh()
+    MainScreen.getkey()
+
+
+def MessageBox(Window, Message):
+    MessageWindow = curses.newwin(5, 52, (math.floor(curses.LINES / 2) - 3), (math.floor(curses.COLS / 2) - 26))
+    MessageWindow.bkgd(" ", curses.color_pair(5))
+    MessageWindow.box()
+    MessageWindow.addstr(2, 2, Message)
+    Window.refresh()
+    MessageWindow.refresh()
+    MainScreen.getkey()
 
 
 def ConfigureData(Window):
@@ -113,6 +130,13 @@ def ConfigureData(Window):
         Window.addstr(5, 1, 'We do not have read/write access: ' + OCPROFILES, curses.A_BOLD | curses.color_pair(1))
         return False
     
+    #  Check for a CA configuration file
+    if (os.path.exists(os.path.join(OCSERV, "ca-cert.cfg"))):
+        Window.addstr(4, 1, 'The CA configuration file exists: ' + OCSERV +  '/ca-cert.cfg')
+    else:
+        Window.addstr(4, 1, 'The CA configuration file does not exist: ' + OCSERV +  '/ca-cert.cfg', curses.A_BOLD | curses.color_pair(1))
+        return False
+    
     return True
 
 
@@ -148,6 +172,7 @@ def ShowExistingProfiles(Window, Line):
 
 def MainMenu(Window, ListLine, MenuLine):
     DrawHeader(Window)
+    Window.addstr(MenuLine, 1, "What to do?", curses.A_BLINK)
     SelectedOption = 1
 
     while True:
@@ -164,15 +189,15 @@ def MainMenu(Window, ListLine, MenuLine):
         if Key == curses.KEY_DOWN:
             SelectedOption += 1
 
-            if SelectedOption > 3:
-                SelectedOption = 3
+            if SelectedOption > 4:
+                SelectedOption = 4
         elif Key == curses.KEY_UP:
             SelectedOption -= 1
             
             if SelectedOption < 1:
                 SelectedOption = 1
         elif Key == curses.KEY_ENTER or Key == 10 or Key == 13:
-            if SelectedOption == 3:
+            if SelectedOption == 4:
                 return
             else:
                 ExecuteOption(Window, MenuLine - 4, SelectedOption)
@@ -186,7 +211,8 @@ def MainMenu(Window, ListLine, MenuLine):
 def DrawMenu(Window, Line, SelectedOption):
     Window.addstr(Line, 1, "Add a profile", curses.A_REVERSE if (SelectedOption == 1) else 0)
     Window.addstr(Line + 1, 1, "Remove a profile", curses.A_REVERSE if (SelectedOption == 2) else 0)
-    Window.addstr(Line + 2, 1, "Exit", curses.A_REVERSE if (SelectedOption == 3) else 0)
+    Window.addstr(Line + 2, 1, "Create certificate authority", curses.A_REVERSE if (SelectedOption == 3) else 0)
+    Window.addstr(Line + 3, 1, "Exit", curses.A_REVERSE if (SelectedOption == 4) else 0)
     return
 
 
@@ -195,10 +221,24 @@ def ExecuteOption(Window, Line, OptionNumber):
         AddProfile(Window, Line)
     elif OptionNumber == 2:
         RemoveProfile(Window, Line)
+    elif OptionNumber == 3:
+        CreateCA(Window, Line)
 
 
 def AddProfile(Window, Line):
-    return
+    #  Get the profile name
+    ProfileName = "dumb"
+
+    with open(os.devnull, 'w') as Null:
+        Process = subprocess.Popen(["certtool", "--generate-privkey", "--outfile", ProfileName + "-privkey.pem"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+        if Process.returncode != 0:
+            return
+        
+        Process = subprocess.Popen(["certtool", "--generate-certificate", "--load-privkey", ProfileName + "-privkey.pem", "--load-ca-certificate", os.path.join(Path(OCSERV).resolve(), "ca-cert.pem"), "--load-ca-privkey", os.path.join(Path(OCSERV).resolve(), "ca-privkey.pem"), "--template", os.path.join(Path(OCSERV).resolve(), "client-cert.cfg"), "--outfile", ProfileName + "-cert.pem"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+        if Process.returncode != 0:
+            return
 
 
 def RemoveProfile(Window, Line):
@@ -235,8 +275,59 @@ def RemoveProfile(Window, Line):
             return
         elif (Key == ord("y")) or (Key == ord("Y")):
             #  Actually do the removal
+            RevokeCertificate(Window, SelectedName)
             return
-    
+
+
+def RevokeCertificate(Window, ProfileName):
+    with open(os.devnull, 'w') as Null:
+        #  Add the revoked certificate to the revoked.pem file
+        RevokedPEM = open(os.path.join(Path(OCPROFILES).resolve(), "revoked.pem"), "a")
+        Process = subprocess.Popen(["cat", ProfileName + "-privkey.pem"], cwd=Path(OCPROFILES).resolve(), stdout=RevokedPEM, stderr=Null)
+        
+        Process.communicate()
+        RevokedPEM.flush()
+        RevokedPEM.close()
+
+        if Process.returncode != 0:
+            ErrorBox(Window, "The revoked pem file couldn't be changed.")
+            return False
+
+        #  Rename the p12 file to remove it from our list
+        Process = subprocess.Popen(["mv", ProfileName + ".p12", ProfileName + ".revoked.ptwelve"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+
+        if Process.returncode != 0:
+            ErrorBox(Window, "The profile's p12 file couldn't be changed.")
+            return False
+
+        #  Regenerate the CRL
+        Process = subprocess.Popen(["certtool", "--generate-crl", "--load-ca-privkey", os.path.join(Path(OCSERV).resolve(), "ca-privkey.pem"), "--load-ca-certificate", os.path.join(Path(OCSERV).resolve(), "ca-cert.pem"), "--load-certificate", "revoked.pem", "--template", os.path.join(Path(OCSERV).resolve(), "crl.tmpl"), "--outfile", os.path.join(Path(OCSERV).resolve(), "crl.pem")], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+
+        if Process.returncode != 0:
+            ErrorBox(Window, "The crl could not be couldn't be written.")
+            return False
+
+        #  Send SIGHUP to the ocserv process
+        Process = subprocess.Popen(["killall", "-HUP", "-q", "ocserv"], cwd=Path(OCPROFILES).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+    return True
+
+
+def CreateCA(Window, Line):
+    #  Create the CA
+    with open(os.devnull, 'w') as Null:
+        Process = subprocess.Popen(["certtool", "--generate-privkey", "--outfile", "ca-privkey.pem"], cwd=Path(OCSERV).resolve(), stdout=Null, stderr=Null)
+        Process.communicate()
+
+        if Process.returncode == 0:
+            MessageBox(Window, "The CA was created.")
+            return True
+        else:
+            ErrorBox(Window, "The CA creation failed.")
+            return False
+
 
 #  Run the main program
 wrapper(Main)
