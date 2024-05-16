@@ -361,7 +361,7 @@ def CreateCA(Window, Line):
             ErrorBox(Window, "The CA creation failed.")
             return False
 
-        Process = subprocess.Popen(["certtool", "--generate-self-signed", "--load-privkey ca-privkey.pem", "--template", "ca-cert.cfg", "--outfile", "ca-cert.pem"], cwd=Path(OCSERV).resolve(), stdout=Null, stderr=Null)
+        Process = subprocess.Popen(["certtool", "--generate-self-signed", "--load-privkey", "ca-privkey.pem", "--template", "ca-cert.cfg", "--outfile", "ca-cert.pem"], cwd=Path(OCSERV).resolve(), stdout=Null, stderr=Null)
         Process.communicate()
 
         if Process.returncode == 0:
