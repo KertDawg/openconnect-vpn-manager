@@ -10,7 +10,7 @@ from curses import wrapper
 
 
 #  Base ocserv ssl folder
-OCSERV = "../ocserv/ssl"
+OCSERV = "/etc/ocserv/ssl"
 OCPROFILES = os.path.join(OCSERV, "profiles")
 
 
